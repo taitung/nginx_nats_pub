@@ -1,8 +1,6 @@
 /*
  * Jarvish Inc. 
  *
- *
- *
  * Author: Guo-Guang Chiou
  * Date:   11/08/2016
  */
