@@ -11,12 +11,13 @@
 #include <ngx_nats.h>
 #include <ngx_nats_comm.h>
 
-static char *ngx_http_natspublisher(ngx_conf_t *cf, void *post, void *data);
+static char *ngx_http_natspublisher(ngx_conf_t *cf, void *post, void *data1);
+static void ngx_http_post_handler(ngx_http_request_t *r); 
 static ngx_conf_post_handler_pt ngx_http_natspublisher_p = ngx_http_natspublisher;
 
 /* structure holding the value of the module directive natspublisher */
 typedef struct {
-  ngx_str_t name;
+  ngx_str_t subject;
 } ngx_http_natspublisher_loc_conf_t;
 
 /* The function initilizes memory for module configuration structure */
@@ -35,9 +36,10 @@ static ngx_command_t ngx_http_natspublisher_commands[] = {
      NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
      ngx_conf_set_str_slot,
      NGX_HTTP_LOC_CONF_OFFSET,
-     offsetof(ngx_http_natspublisher_loc_conf_t, name),
+     offsetof(ngx_http_natspublisher_loc_conf_t, subject),
      &ngx_http_natspublisher_p
-  }
+  },
+  ngx_null_command
 };
 
 /* subject defined in nginx.conf */
@@ -71,6 +73,47 @@ ngx_module_t ngx_http_natspublisher_module = {
   NGX_MODULE_V1_PADDING
 };
 
+static void ngx_http_post_handler(ngx_http_request_t *r) {
+  if(r->request_body == NULL || 
+     r->request_body->bufs == NULL) { 
+    return;
+  } 
+
+  u_char *p = NULL;
+  size_t len = 0;
+  ngx_buf_t *buf;
+  ngx_chain_t *cl;
+  cl = r->request_body->bufs;
+  if(cl != NULL) {
+    for(/* void */; cl != NULL; cl = cl->next) {
+      buf = cl->buf;
+      if(buf != NULL) {
+        len += buf->last - buf->pos;
+      }
+    }
+    if(((int)len) > 0) {
+      p = ngx_pnalloc(r->pool, len);
+      if(p == NULL) {
+        ngx_log_stderr(0,"%s: Failed to allocate memory", __func__);
+        ngx_http_finalize_request(r, NGX_HTTP_INTERNAL_SERVER_ERROR);
+        return;
+      }
+      cl = r->request_body->bufs;
+      for(/* void */; cl != NULL; cl = cl->next) {
+        buf = cl->buf;
+        ngx_cpymem(p, buf->start, buf->last - buf->pos);
+      } 
+      ngx_nats_client_t *ncf = ngx_http_get_module_loc_conf(r, ngx_http_natspublisher_module);
+      ngx_nats_publish(ncf, &natspublisher_subject, NULL, p, len);
+      ngx_http_finalize_request(r,NGX_DONE);
+    }
+  } else {
+    ngx_log_stderr(0,"%s: chain is null", __func__);
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "chain is null");
+  }
+  return;
+}
+
 /* manin handler */
 static ngx_int_t ngx_http_natspublisher_handler(ngx_http_request_t *r) {
   ngx_int_t rc;
@@ -81,6 +124,14 @@ static ngx_int_t ngx_http_natspublisher_handler(ngx_http_request_t *r) {
   if(!(r->method & (NGX_HTTP_GET | NGX_HTTP_POST))) {
     return NGX_HTTP_NOT_ALLOWED;
   }
+
+  if(r->method & NGX_HTTP_POST) {
+    rc = ngx_http_read_client_request_body(r, ngx_http_post_handler);
+    if(rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+      return rc;
+    }
+  }
+
   /* discard request body */
   rc = ngx_http_discard_request_body(r);
   if(rc != NGX_OK) {
@@ -116,7 +167,6 @@ static ngx_int_t ngx_http_natspublisher_handler(ngx_http_request_t *r) {
     return rc;
   }
 
-  //fprintf(stderr,"%s\n",natspublisher_subject.data); 
   /* send the buffer chain of your response */
   return ngx_http_output_filter(r, &out);
 }
