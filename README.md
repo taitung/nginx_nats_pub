@@ -25,7 +25,7 @@ ngxin_nats_pub using nginx_nats is a nginx location module saving http post data
       .
     }
   }
-```nginx
+```
 
 ### build
 --add-module=/path/to/nginx_nats_pub
