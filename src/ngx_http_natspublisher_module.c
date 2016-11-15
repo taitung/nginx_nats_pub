@@ -101,7 +101,7 @@ static void ngx_http_post_handler(ngx_http_request_t *r) {
       cl = r->request_body->bufs;
       for(/* void */; cl != NULL; cl = cl->next) {
         buf = cl->buf;
-        ngx_cpymem(p, buf->start, buf->last - buf->pos);
+        ngx_cpymem(p, buf->pos, buf->last - buf->pos);
       } 
       ngx_nats_client_t *ncf = ngx_http_get_module_loc_conf(r, ngx_http_natspublisher_module);
       ngx_nats_publish(ncf, &natspublisher_subject, NULL, p, len);
