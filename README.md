@@ -18,7 +18,7 @@ ngxin_nats_pub using nginx_nats is a nginx location module saving http post data
   http {
     server {
       location ~/path {
-        natspublisher "subject"
+        natspublisher "subject" "replyTo"
       }
       .
       .
