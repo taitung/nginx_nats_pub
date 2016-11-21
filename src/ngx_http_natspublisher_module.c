@@ -15,6 +15,7 @@ static ngx_conf_post_handler_pt ngx_http_natspublisher_p = ngx_http_natspublishe
 /* structure holding the value of the module directive natspublisher */
 typedef struct {
   ngx_str_t subject;
+  ngx_str_t replyTo;
 } ngx_http_natspublisher_loc_conf_t;
 
 /* The function initilizes memory for module configuration structure */
@@ -30,7 +31,7 @@ static void * ngx_http_natspublisher_create_loc_conf(ngx_conf_t *cf){
 /* The command array of array */
 static ngx_command_t ngx_http_natspublisher_commands[] = {
   {  ngx_string("natspublisher"), 
-     NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1,
+     NGX_HTTP_LOC_CONF | NGX_CONF_TAKE2,
      ngx_conf_set_str_slot,
      NGX_HTTP_LOC_CONF_OFFSET,
      offsetof(ngx_http_natspublisher_loc_conf_t, subject),
@@ -41,6 +42,7 @@ static ngx_command_t ngx_http_natspublisher_commands[] = {
 
 /* subject defined in nginx.conf */
 static ngx_str_t natspublisher_subject;
+static ngx_str_t natspublisher_replyTo;
 
 /*  The module context hooks location configuration */
 static ngx_http_module_t ngx_http_natspublisher_module_ctx = {
@@ -101,7 +103,11 @@ static void ngx_http_post_handler(ngx_http_request_t *r) {
         ngx_cpymem(p, buf->pos, buf->last - buf->pos);
       } 
       ngx_nats_client_t *ncf = ngx_http_get_module_loc_conf(r, ngx_http_natspublisher_module);
-      ngx_nats_publish(ncf, &natspublisher_subject, NULL, p, len);
+      if(natspublisher_replyTo.data != NULL) {
+        ngx_nats_publish(ncf, &natspublisher_subject, &natspublisher_replyTo, p, len);
+      } else {
+        ngx_nats_publish(ncf, &natspublisher_subject, NULL, p, len);
+      }
       ngx_http_finalize_request(r,NGX_DONE);
     }
   } else {
@@ -174,6 +180,11 @@ static char * ngx_http_natspublisher(ngx_conf_t *cf, void *post, void *data1) {
   clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
   clcf->handler = ngx_http_natspublisher_handler;
   ngx_str_t *name = data1;
+  ngx_str_t *value = cf->args->elts;
+  if(value[0].data != NULL) {
+    natspublisher_replyTo.data = value->data;
+    natspublisher_replyTo.len = ngx_strlen(natspublisher_replyTo.data);
+  }
   if(ngx_strcmp(name->data, "") == 0) {
     return NGX_CONF_ERROR;
   }
